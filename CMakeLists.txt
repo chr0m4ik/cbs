@@ -16,20 +16,15 @@ endif()
 add_executable(cbs_shell
     src/main.cpp
     src/Shell.cpp
-    src/Shell.hpp
     src/Command.cpp
-    src/Command.hpp
     src/FileManager.cpp
-    src/FileManager.hpp
     src/AliasManager.cpp
-    src/AliasManager.hpp
-    src/Utility.hpp
 )
 
 target_link_libraries(cbs_shell PRIVATE nlohmann_json::nlohmann_json)
 
 # Добавляем директорию includes
-target_include_directories(cbs_shell PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/includes)
+target_include_directories(cbs_shell PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/includes)
 
 # Установка опций компилятора для Windows
 if(MSVC)
