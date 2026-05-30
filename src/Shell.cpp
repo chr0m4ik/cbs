@@ -5,11 +5,9 @@
 Shell::Shell() {
     currentDirectory = fs::current_path().string();
     
-    // Загружаем алиасы
     std::string aliasPath = getAliasesPath();
     aliasManager.loadAliases(aliasPath);
     
-    // Установка кодовой страницы для вывода
     if (fs::current_path().string().find("\\") != std::string::npos) {
         system("chcp 65001 > nul 2>&1");
     }
@@ -24,7 +22,6 @@ std::string Shell::getShellDirectory() const {
         return env;
     }
     
-    // Получаем директорию исполняемого файла
     char buffer[MAX_PATH];
     GetModuleFileNameA(NULL, buffer, MAX_PATH);
     std::string exePath(buffer);
@@ -73,7 +70,6 @@ std::vector<CommandInfo> getShellCommands(const std::string& shellDir) {
             }
         }
         
-        // Сортировка команд
         std::sort(commands.begin(), commands.end(),
             [](const CommandInfo& a, const CommandInfo& b) {
                 return a.getName() < b.getName();
@@ -162,7 +158,6 @@ void Shell::executeExternalScript(const std::string& cmd, const std::vector<std:
         return;
     }
     
-    // Попробуем найти в PATH
     std::string pathCmd = findCommandInPath(cmd);
     if (!pathCmd.empty()) {
         std::string command = "\"" + pathCmd + "\"";
@@ -210,7 +205,6 @@ bool Shell::handleBuiltin(const std::string& cmd, const std::vector<std::string>
     }
     else if (cmd == "cd") {
         if (args.empty()) {
-            // cd без аргументов -> домой
             char* home = std::getenv("USERPROFILE");
             if (home) {
                 FileManager::changeDirectory(home);
@@ -273,7 +267,6 @@ void Shell::run() {
             continue;
         }
         
-        // Разбираем команду и аргументы
         auto parts = parseCommandLine(line);
         if (parts.empty()) {
             continue;
@@ -282,7 +275,6 @@ void Shell::run() {
         std::string cmd = parts[0];
         std::vector<std::string> cmdArgs(parts.begin() + 1, parts.end());
         
-        // Проверяем, есть ли алиас
         if (aliasManager.hasAlias(cmd)) {
             std::string expandedAlias = aliasManager.expandAlias(cmd);
             auto aliasParts = parseCommandLine(expandedAlias);
@@ -292,12 +284,10 @@ void Shell::run() {
             }
         }
         
-        // Пытаемся выполнить встроенную команду
         if (handleBuiltin(cmd, cmdArgs)) {
             continue;
         }
         
-        // Пытаемся выполнить внешний скрипт или команду
         executeExternalScript(cmd, cmdArgs);
     }
 }
