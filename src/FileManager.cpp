@@ -197,11 +197,9 @@ void FileManager::touchFile(const std::vector<std::string>& args) {
     for (const auto& arg : args) {
         try {
             if (fs::exists(arg)) {
-                // Обновляем время модификации, открыв файл в режиме append
                 std::ofstream file(arg, std::ios::app);
                 file.close();
             } else {
-                // Создаём новый пустой файл
                 std::ofstream file(arg);
                 file.close();
             }
@@ -356,7 +354,6 @@ void FileManager::listFiles(const std::vector<std::string>& args) {
         if (arg == "-l") {
             longFormat = true;
         } else if (arg[0] == '-') {
-            // ignore other options for now
         } else {
             paths.push_back(arg);
         }
