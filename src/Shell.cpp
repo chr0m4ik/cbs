@@ -373,26 +373,25 @@ bool Shell::handleBuiltin(const std::string& cmd, const std::vector<std::string>
 void Shell::run() {
     std::cout << "Welcome to cbs shell!\n";
     std::cout << "Type help for commands, exit to quit.\n";
-    
+
     std::string line;
     while (true) {
         std::cout << getPrompt();
         std::getline(std::cin, line);
-        
+
         if (line.empty()) {
             continue;
         }
-        
-        // Разбираем команду и аргументы
+
         auto parts = parseCommandLine(line);
         if (parts.empty()) {
             continue;
         }
-        
+
         std::string cmd = parts[0];
         std::vector<std::string> cmdArgs(parts.begin() + 1, parts.end());
-        
-        // Проверяем, есть ли алиас
+
+        // Алиасы
         if (aliasManager.hasAlias(cmd)) {
             std::string expandedAlias = aliasManager.expandAlias(cmd);
             auto aliasParts = parseCommandLine(expandedAlias);
@@ -401,13 +400,36 @@ void Shell::run() {
                 cmdArgs.insert(cmdArgs.begin(), aliasParts.begin() + 1, aliasParts.end());
             }
         }
-        
-        // Пытаемся выполнить встроенную команду
+
+        // Проверяем флаг помощи -h / --help
+        bool wantsHelp = false;
+        for (const auto& a : cmdArgs) {
+            if (a == "-h" || a == "--help") {
+                wantsHelp = true;
+                break;
+            }
+        }
+
+        if (wantsHelp) {
+            std::string builtinHelp = getBuiltinHelp(cmd);
+            if (!builtinHelp.empty()) {
+                std::cout << builtinHelp;
+                continue;
+            }
+
+            std::string scriptPath = findShellScript(getShellDirectory(), cmd);
+            if (!scriptPath.empty()) {
+                printScriptFullInfo(scriptPath);
+                continue;
+            }
+        }
+
+        // Встроенная команда
         if (handleBuiltin(cmd, cmdArgs)) {
             continue;
         }
-        
-        // Пытаемся выполнить внешний скрипт или команду
+
+        // Внешний скрипт или команда
         executeExternalScript(cmd, cmdArgs);
     }
 }
