@@ -143,7 +143,7 @@ void FileManager::copyFile(const std::vector<std::string>& args) {
         }
 
         fs::path dstPath = destination;
-        if (sources.size() > 1 && fs::is_directory(dstPath)) {
+        if (fs::is_directory(dstPath)) {
             dstPath /= fs::path(src).filename();
         }
 
@@ -181,14 +181,15 @@ void FileManager::moveFile(const std::vector<std::string>& args) {
         }
 
         fs::path dstPath = destination;
-        if (sources.size() > 1 && fs::is_directory(dstPath)) {
+        if (fs::is_directory(dstPath)) {
             dstPath /= fs::path(src).filename();
         }
 
         try {
             fs::rename(src, dstPath);
         } catch (const std::exception& e) {
-            std::cerr << "mv: cannot move '" << src << "' to '" << dstPath << "': " << e.what() << "\n";
+            recursiveCopy(src, dstPath);
+            recursiveRemove(src);
         }
     }
 }
@@ -197,9 +198,11 @@ void FileManager::touchFile(const std::vector<std::string>& args) {
     for (const auto& arg : args) {
         try {
             if (fs::exists(arg)) {
+                // Обновляем время модификации, открыв файл в режиме append
                 std::ofstream file(arg, std::ios::app);
                 file.close();
             } else {
+                // Создаём новый пустой файл
                 std::ofstream file(arg);
                 file.close();
             }
@@ -346,6 +349,32 @@ void FileManager::tailFile(const std::vector<std::string>& args) {
     }
 }
 
+void FileManager::renameFile(const std::vector<std::string>& args) {
+    if (args.size() != 2) {
+        std::cerr << "rename: usage: rename <old_name> <new_name>\n";
+        return;
+    }
+
+    const std::string& oldName = args[0];
+    const std::string& newName = args[1];
+
+    if (!fs::exists(oldName)) {
+        std::cerr << "rename: cannot rename '" << oldName << "': No such file or directory\n";
+        return;
+    }
+
+    if (fs::exists(newName)) {
+        std::cerr << "rename: target '" << newName << "' already exists\n";
+        return;
+    }
+
+    try {
+        fs::rename(oldName, newName);
+    } catch (const std::exception& e) {
+        std::cerr << "rename: cannot rename '" << oldName << "' to '" << newName << "': " << e.what() << "\n";
+    }
+}
+
 void FileManager::listFiles(const std::vector<std::string>& args) {
     std::vector<std::string> paths;
     bool longFormat = false;
@@ -354,6 +383,7 @@ void FileManager::listFiles(const std::vector<std::string>& args) {
         if (arg == "-l") {
             longFormat = true;
         } else if (arg[0] == '-') {
+            // другие опции пока игнорируем
         } else {
             paths.push_back(arg);
         }
@@ -385,27 +415,47 @@ void FileManager::listFiles(const std::vector<std::string>& args) {
             }
             std::sort(entries.begin(), entries.end());
 
-            for (const auto& entry : entries) {
-                const auto& p = entry.path();
-                std::string name = p.filename().string();
+            if (longFormat) {
+                for (const auto& entry : entries) {
+                    const auto& p = entry.path();
+                    std::string name = p.filename().string();
 
-                if (longFormat) {
-                    auto status = fs::status(p);
                     auto size = fs::is_regular_file(p) ? fs::file_size(p) : 0;
                     auto mtime = fs::last_write_time(p);
-                    
+
                     char type = fs::is_directory(p) ? 'd' : '-';
                     std::cout << type << " "
                               << std::setw(10) << size << " "
                               << formatTime(mtime) << " "
                               << name << "\n";
-                } else {
-                    std::cout << std::setw(20) << std::left << name;
                 }
-            }
+            } else {
+                // Короткий формат: ровные колонки
 
-            if (!longFormat && !entries.empty()) {
-                std::cout << "\n";
+                // 1) находим самое длинное имя
+                size_t maxLen = 0;
+                for (const auto& entry : entries) {
+                    maxLen = std::max(maxLen, entry.path().filename().string().size());
+                }
+
+                size_t colWidth = maxLen + 2;   // +2 чтобы был отступ между именами
+                size_t termWidth = 80;          // считаем ширину консоли 80 символов
+                size_t cols = termWidth / colWidth;
+                if (cols < 1) cols = 1;          // хотя бы одна колонка
+
+                // 2) печатаем, перенося строку каждые cols имён
+                size_t count = 0;
+                for (const auto& entry : entries) {
+                    std::string name = entry.path().filename().string();
+                    std::cout << std::left << std::setw(static_cast<int>(colWidth)) << name;
+                    count++;
+                    if (count % cols == 0) {
+                        std::cout << "\n";
+                    }
+                }
+                if (count % cols != 0) {
+                    std::cout << "\n";
+                }
             }
         } catch (const std::exception& e) {
             std::cerr << "ls: " << path << ": " << e.what() << "\n";

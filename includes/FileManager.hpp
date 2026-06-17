@@ -26,6 +26,9 @@ public:
     
     // mv команда
     static void moveFile(const std::vector<std::string>& args);
+
+    // rename команда
+    static void renameFile(const std::vector<std::string>& args);
     
     // touch команда
     static void touchFile(const std::vector<std::string>& args);

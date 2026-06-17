@@ -4,13 +4,12 @@
 
 Shell::Shell() {
     currentDirectory = fs::current_path().string();
-    
+
     std::string aliasPath = getAliasesPath();
     aliasManager.loadAliases(aliasPath);
-    
-    if (fs::current_path().string().find("\\") != std::string::npos) {
-        system("chcp 65001 > nul 2>&1");
-    }
+
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
 }
 
 Shell::~Shell() {
@@ -22,6 +21,7 @@ std::string Shell::getShellDirectory() const {
         return env;
     }
     
+    // Получаем директорию исполняемого файла
     char buffer[MAX_PATH];
     GetModuleFileNameA(NULL, buffer, MAX_PATH);
     std::string exePath(buffer);
@@ -52,6 +52,109 @@ std::string Shell::getPrompt() const {
     return "(" + currentDirectory + ")> ";
 }
 
+
+// Полное описание встроенных команд (для флага -h / --help)
+std::string getBuiltinHelp(const std::string& cmd) {
+    if (cmd == "ls") {
+        return "ls - вывод списка файлов\n"
+               "    -l: подробный вывод (тип, размер, дата)\n";
+    }
+    if (cmd == "pwd") {
+        return "pwd - показать текущую папку\n";
+    }
+    if (cmd == "cd") {
+        return "cd <папка> - перейти в папку\n"
+               "    без аргумента - перейти в домашнюю папку\n";
+    }
+    if (cmd == "mkdir") {
+        return "mkdir <папка...> - создать папки\n"
+               "    -p: создавать вложенные папки целиком\n";
+    }
+    if (cmd == "rm") {
+        return "rm <путь...> - удалить файлы или папки\n"
+               "    -r: удалять папки рекурсивно\n"
+               "    -f: не ругаться, если файла нет\n";
+    }
+    if (cmd == "cp") {
+        return "cp <источник...> <назначение> - копировать\n"
+               "    -r: копировать папки рекурсивно\n";
+    }
+    if (cmd == "mv") {
+        return "mv <источник...> <назначение> - переместить файлы\n";
+    }
+    if (cmd == "rename") {
+        return "rename <старое_имя> <новое_имя> - переименовать файл или папку\n";
+    }
+    if (cmd == "touch") {
+        return "touch <файл...> - создать пустой файл или обновить время\n";
+    }
+    if (cmd == "cat") {
+        return "cat <файл...> - вывести содержимое файлов\n";
+    }
+    if (cmd == "head") {
+        return "head <файл...> - вывести первые строки файла\n"
+               "    -n <N>: сколько строк выводить (по умолчанию 10)\n";
+    }
+    if (cmd == "tail") {
+        return "tail <файл...> - вывести последние строки файла\n"
+               "    -n <N>: сколько строк выводить (по умолчанию 10)\n"
+               "    -f: следить за файлом (пока не реализовано)\n";
+    }
+    if (cmd == "cls") {
+        return "cls - очистить экран\n";
+    }
+    if (cmd == "help") {
+        return "help - показать список доступных команд\n";
+    }
+    if (cmd == "exit" || cmd == "quit") {
+        return "exit / quit - выйти из терминала\n";
+    }
+    return "";
+}
+
+// Ищет скрипт команды в папке Shell (.bat / .ps1 / .py)
+std::string findShellScript(const std::string& shellDir, const std::string& cmd) {
+    std::vector<std::string> extensions = {".bat", ".ps1", ".py"};
+    for (const auto& ext : extensions) {
+        std::string scriptPath = shellDir + "\\" + cmd + ext;
+        if (fileExists(scriptPath)) {
+            return scriptPath;
+        }
+    }
+    return "";
+}
+
+// Читает скрипт и выводит все строки с пометкой //FULL_INFO:
+void printScriptFullInfo(const std::string& scriptPath) {
+    std::ifstream file(scriptPath);
+    if (!file.is_open()) {
+        std::cerr << "Cannot open script: " << scriptPath << "\n";
+        return;
+    }
+
+    std::string marker = "//FULL_INFO:";
+    std::string line;
+    bool found = false;
+
+    while (std::getline(file, line)) {
+        size_t pos = line.find(marker);
+        if (pos != std::string::npos) {
+            std::string info = line.substr(pos + marker.length());
+            size_t start = info.find_first_not_of(" \t");
+            if (start != std::string::npos) {
+                info = info.substr(start);
+            }
+            std::cout << info << "\n";
+            found = true;
+        }
+    }
+
+    if (!found) {
+        std::cout << "Нет описания для этой команды.\n";
+    }
+}
+
+
 std::vector<CommandInfo> getShellCommands(const std::string& shellDir) {
     std::vector<CommandInfo> commands;
     
@@ -70,6 +173,7 @@ std::vector<CommandInfo> getShellCommands(const std::string& shellDir) {
             }
         }
         
+        // Сортировка команд
         std::sort(commands.begin(), commands.end(),
             [](const CommandInfo& a, const CommandInfo& b) {
                 return a.getName() < b.getName();
@@ -95,6 +199,7 @@ std::vector<CommandInfo> Shell::getAvailableCommands() const {
     commands.push_back(CommandInfo("mkdir", "create directories"));
     commands.push_back(CommandInfo("rm", "remove files/directories"));
     commands.push_back(CommandInfo("cp", "copy files/directories"));
+    commands.push_back(CommandInfo("rename", "rename a file or directory"));
     commands.push_back(CommandInfo("mv", "move/rename files/directories"));
     commands.push_back(CommandInfo("touch", "create or update file"));
     commands.push_back(CommandInfo("cat", "concatenate and print files"));
@@ -129,15 +234,16 @@ std::string Shell::findCommandInPath(const std::string& cmd) const {
     return "";
 }
 
+// Запуск внешнего скрипта или команды
 void Shell::executeExternalScript(const std::string& cmd, const std::vector<std::string>& args) {
     std::string shellDir = getShellDirectory();
     std::vector<std::string> extensions = {".bat", ".ps1", ".py"};
-    
+
     for (const auto& ext : extensions) {
         std::string scriptPath = shellDir + "\\" + cmd + ext;
-        
+
         if (!fileExists(scriptPath)) continue;
-        
+
         std::string command;
         if (ext == ".bat") {
             command = "cmd /c \"" + scriptPath + "\"";
@@ -146,31 +252,36 @@ void Shell::executeExternalScript(const std::string& cmd, const std::vector<std:
         } else if (ext == ".py") {
             command = "python \"" + scriptPath + "\"";
         }
-        
+
         for (const auto& arg : args) {
             command += " \"" + arg + "\"";
         }
-        
+
+        command = "\"" + command + "\"";
+
         int result = system(command.c_str());
         if (result != 0) {
             std::cerr << cmd << " exited with code " << result << "\n";
         }
         return;
     }
-    
+
     std::string pathCmd = findCommandInPath(cmd);
     if (!pathCmd.empty()) {
         std::string command = "\"" + pathCmd + "\"";
         for (const auto& arg : args) {
             command += " \"" + arg + "\"";
         }
+
+        command = "\"" + command + "\"";
+
         int result = system(command.c_str());
         if (result != 0) {
             std::cerr << "Command exited with code " << result << "\n";
         }
         return;
     }
-    
+
     std::cerr << "Unknown command: " << cmd << "\n";
 }
 
@@ -203,8 +314,13 @@ bool Shell::handleBuiltin(const std::string& cmd, const std::vector<std::string>
         clearScreen();
         return true;
     }
+    else if (cmd == "rename") {
+        FileManager::renameFile(args);
+        return true;
+    }
     else if (cmd == "cd") {
         if (args.empty()) {
+            // cd без аргументов -> домой
             char* home = std::getenv("USERPROFILE");
             if (home) {
                 FileManager::changeDirectory(home);
@@ -267,6 +383,7 @@ void Shell::run() {
             continue;
         }
         
+        // Разбираем команду и аргументы
         auto parts = parseCommandLine(line);
         if (parts.empty()) {
             continue;
@@ -275,6 +392,7 @@ void Shell::run() {
         std::string cmd = parts[0];
         std::vector<std::string> cmdArgs(parts.begin() + 1, parts.end());
         
+        // Проверяем, есть ли алиас
         if (aliasManager.hasAlias(cmd)) {
             std::string expandedAlias = aliasManager.expandAlias(cmd);
             auto aliasParts = parseCommandLine(expandedAlias);
@@ -284,10 +402,12 @@ void Shell::run() {
             }
         }
         
+        // Пытаемся выполнить встроенную команду
         if (handleBuiltin(cmd, cmdArgs)) {
             continue;
         }
         
+        // Пытаемся выполнить внешний скрипт или команду
         executeExternalScript(cmd, cmdArgs);
     }
 }

@@ -17,8 +17,10 @@ private:
     AliasManager aliasManager;
     std::string currentDirectory;
 
+    // Встроенные команды
     bool handleBuiltin(const std::string& cmd, const std::vector<std::string>& args);
-
+    
+    // Вспомогательные методы
     std::string getPrompt() const;
     std::vector<CommandInfo> getAvailableCommands() const;
     void executeExternalScript(const std::string& cmd, const std::vector<std::string>& args);
